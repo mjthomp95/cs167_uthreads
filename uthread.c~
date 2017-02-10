@@ -64,12 +64,9 @@ static void make_reapable(uthread_t *uth);
 void
 uthread_init(void)
 {
-  for(int i = 0; i < UTH_MAX_UTHREADS; i++){
-    uthread_t *newUThread_ptr;
-    newUThread_ptr = (uthread_t *)malloc(sizeof(uthread_t));
-    uthreads[i] = *newUThread_ptr;
-    newUThread_ptr->ut_state = UT_NO_STATE;
-  }
+    for(int i = 0; i < UTH_MAX_UTHREADS; i++){
+        uthreads[i] = uthread_t 
+    create_first_thr();
   /* XXX: don't touch anything below here */
 
   /* these should go last, and in this order */
@@ -96,22 +93,7 @@ int
 uthread_create(uthread_id_t *uidp, uthread_func_t func,
            long arg1, char *arg2[], int prio)
 {
-  uthread_id_t newThread_id = uthread_alloc();
-  if(newThread_id == -1){
-    return -1;
-  }
-  uthread_t newThread = uthreads[newThread_id];
-  uthread_makecontext(&newThread.ut_ctx, newThread.ut_stack, UTH_STACK_SIZE, func, arg1, arg2);
-  memset(newThread.ut_link, 0, sizeof(list_link_t));
-  newThread.ut_id = newThread_id;
-  newThread.ut_errno = newThread.ut_has_exited = newThread.ut_exit = 0;
-  newThread.ut_detached = 0;
-  newThread.ut_waiter = NULL;
-  uthread_nopreempt_on();
-  newThread.ut_state = UT_RUNNABLE;
-  // Possibly calls preempt_reset
-  uthread_setprio(newThread_id, prio);
-  uthread_nopreempt_off();
+  NOT_YET_IMPLEMENTED("UTHREADS: uthread_create");
   return 0;
 }
 
@@ -132,15 +114,7 @@ uthread_create(uthread_id_t *uidp, uthread_func_t func,
 void
 uthread_exit(int status)
 {
-  ut_curthr->ut_state = UT_ZOMBIE;
-  ut_curthr->ut_has_exited = 1;
-  ut_curthr->ut_exit = status;
-  if(ut_curthr->ut_detached == 0 && ut_curthr->ut_waiter != NULL){
-    uthread_wake(ut_curthr->ut_waiter);
-  } else {
-    make_reapable(ut_curthr);
-  }
-
+  NOT_YET_IMPLEMENTED("UTHREADS: uthread_exit");
   uthread_switch();
 
   PANIC("returned to a dead thread");
@@ -172,31 +146,8 @@ uthread_exit(int status)
 int
 uthread_join(uthread_id_t uid, int *return_value)
 {
-  uthread_t threadToWaitFor = uthreads[uid];
-  uthread_nopreempt_on();
-  int result;
-  if(uid == uthread_self() || ut_curthr->ut_waiter->ut_id == uid){
-
-    result = EDEADLK;
-  } else if(threadToWaitFor.ut_state == UT_ZOMBIE || threadToWaitFor.ut_detached){
-
-    result = EINVAL;
-  } else if(threadToWaitFor.ut_waiter != NULL){
-
-    result = EINVAL;
-  } else if(threadToWaitFor.ut_state == UT_NO_STATE || threadToWaitFor == UT_TRANSITION){
-
-    result = ESRCH;
-  } else {
-    // !!!See whether I need to add a preempt_off here before uthread_block
-    threadToWaitFor.ut_waiter = ut_curthr;
-    threadToWaitFor.ut_detached = 0;
-    uthread_block();
-    *return_value = threadToWaitFor.ut_exit;
-    result = uthread_detach(uid);
-  }
-  uthread_nopreempt_off();
-  return result;
+  NOT_YET_IMPLEMENTED("UTHREADS: uthread_join");
+  return 0;
 }
 
 
@@ -220,25 +171,8 @@ uthread_join(uthread_id_t uid, int *return_value)
 int
 uthread_detach(uthread_id_t uid)
 {
-  uthread_t thread_to_detach = uthreads[uid];
-  int result = 0;
-  uthread_nopreempt_on();
-  if(thread_to_detach.ut_state == UT_NO_STATE || thread_to_detach.ut_state == UT_TRANSITION){
-    //no thread with uid
-    result = ESRCH;
-  }
-  if(thread_to_detach.ut_state == UT_ZOMBIE || thread_to_detach.ut_detached || thread_to_detach.ut_waiter != NULL){
-    //non-joinable thread
-    result = EINVAL;
-  }
-  if(result == 0){
-    thread_to_detach.ut_detached = 1;
-  }
-  if(thread_to_detach.ut_has_exited){
-    make_reapable(&thread_to_detach);
-  }
-  uthread_nopreempt_off();
-  return result;
+  NOT_YET_IMPLEMENTED("UTHREADS: uthread_detach");
+  return 0;
 }
 
 
@@ -271,19 +205,8 @@ uthread_self(void)
 static uthread_id_t
 uthread_alloc(void)
 {
-  // NOT_YET_IMPLEMENTED("UTHREADS: uthread_alloc");
-  uthread_nopreempt_on()
-  for(int i = 0; i < UTH_MAX_UTHREADS; i++){
-    if(uthreads[i].ut_state == UT_NO_STATE){
-      uthreads[i].ut_stack = alloc_stack();
-      uthreads[i].ut_state = UT_TRANSITION;
-      uthread_nopreempt_off();
-      return i;
-    }
-  }
-  // No Free Threads
-  uthread_nopreempt_off();
-  return -1;
+  NOT_YET_IMPLEMENTED("UTHREADS: uthread_alloc");
+  return 0;
 }
 
 /*
@@ -296,7 +219,7 @@ uthread_alloc(void)
 static void
 uthread_destroy(uthread_t *uth)
 {
-  free_stack(uth->ut_stack);
+  NOT_YET_IMPLEMENTED("UTHREADS: uthread_destroy");
 }
 
 
@@ -416,7 +339,7 @@ create_first_thr(void)
     uthread_getcontext(&ut_curthr->ut_ctx);
     ut_curthr->ut_prio = UTH_MAXPRIO;
     ut_curthr->ut_errno = ut_curthr->ut_has_exited = ut_curthr->ut_exit = 0;
-    ut_curthr->ut_detached = 1;
+	ut_curthr->ut_detached = 1;
     ut_curthr->ut_waiter = NULL;
     ut_curthr->ut_state = UT_ON_CPU;
 }
@@ -427,7 +350,7 @@ create_first_thr(void)
  *
  */
 
-static void
+static void __attribute__((unused))
 make_reapable(uthread_t *uth)
 {
     assert(uth->ut_detached);
@@ -440,7 +363,7 @@ make_reapable(uthread_t *uth)
 
 
 
-static char *
+static char * __attribute__((unused))
 alloc_stack(void)
 {
     // Must be protected from preemption
@@ -450,7 +373,7 @@ alloc_stack(void)
     return stack;
 }
 
-static void
+static void __attribute__((unused))
 free_stack(char *stack)
 {
     // Must be protected from preemption
