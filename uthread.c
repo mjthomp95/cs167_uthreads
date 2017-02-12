@@ -131,13 +131,15 @@ uthread_create(uthread_id_t *uidp, uthread_func_t func,
  */
 void
 uthread_exit(int status)
-{
+{ 
+  uthread_nopreempt_on();
   ut_curthr->ut_state = UT_ZOMBIE;
   ut_curthr->ut_has_exited = 1;
   ut_curthr->ut_exit = status;
   if(ut_curthr->ut_detached == 0 && ut_curthr->ut_waiter != NULL){
     uthread_wake(ut_curthr->ut_waiter);
   } else {
+    ut_curthr->ut_detached = 1;
     make_reapable(ut_curthr);
   }
 
@@ -220,9 +222,10 @@ uthread_join(uthread_id_t uid, int *return_value)
 int
 uthread_detach(uthread_id_t uid)
 {
+  uthread_nopreempt_on();
   uthread_t thread_to_detach = uthreads[uid];
   int result = 0;
-  uthread_nopreempt_on();
+  
   if(thread_to_detach.ut_state == UT_NO_STATE || thread_to_detach.ut_state == UT_TRANSITION){
     //no thread with uid
     result = ESRCH;

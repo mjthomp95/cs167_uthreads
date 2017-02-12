@@ -28,13 +28,14 @@
 int clock_count;
 int taken_clock_count;
 
-static utqueue_t __attribute__((unused)) runq_table[UTH_MAXPRIO + 1]; /* priority runqueues */
+static utqueue_t runq_table[UTH_MAXPRIO + 1]; /* priority runqueues */
 static int uthread_no_preempt;              /* preemption not allowed */
 static int uthread_no_preempt_count;		/* used to allow nested calls to uthread_no_preempt_on */
 
 
 /* ----------- public code -- */
-
+//Prototype
+int runq_nonempty(void);
 
 /*
  * uthread_yield
@@ -51,7 +52,15 @@ static int uthread_no_preempt_count;		/* used to allow nested calls to uthread_n
 void
 uthread_yield(void)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_yield");
+  uthread_nopreempt_on();
+  if(runq_nonempty()){
+    utqueue_enqueue(runq_table[&ut_curthr->ut_prio], ut_curthr);
+    ut_curthr->ut_state = UT_RUNNABLE;
+    uthread_switch();
+  } else {
+    uthread_nopreempt_off();
+  }
+  return;
 }
 
 
@@ -65,7 +74,9 @@ uthread_yield(void)
 void
 uthread_block(void)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_block");
+  uthread_nopreempt_on();
+  ut_curthr->ut_state = UT_WAIT;
+  uthread_switch();
 }
 
 
@@ -81,7 +92,17 @@ uthread_block(void)
 void
 uthread_wake(uthread_t *uthr)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_wake");
+  uthread_nopreempt_on();
+  if(uthr->ut_state == UT_WAIT){
+    utqueue_enqueue(runq_table[uthr->ut_prio], uthr);
+    uthr->ut_state == UT_RUNNABLE;
+  }
+  
+  if(uthr->ut_prio > ut_curthr->ut_prio){
+    uthread_yield();
+  } else {
+    uthread_nopreempt_off();
+  }
 }
 
 
@@ -97,7 +118,21 @@ uthread_wake(uthread_t *uthr)
 int
 uthread_setprio(uthread_id_t id, int prio)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_setprio");
+  uthread_nopreempt_on();
+  uthread_t thread_to_change = uthreads[id];
+  if(thread_to_change.ut_state == UT_NO_STATE || thread_to_change.ut_state == UT_TRANSITION){
+    return -1;
+  }
+  int pre_prio = thread_to_change.ut_prio;
+  thread_to_change.ut_prio = prio;
+  if(thread_to_change.ut_state == UT_RUNNABLE){
+    utqueue_remove(runq_table[pre_prio], &thread_to_change);
+    utqueue_enqueue(runq_table[prio], &thread_to_change);
+  }
+  uthread_nopreempt_off();
+  if(thread_to_change.ut_prio > ut_curthr->ut_prio){
+    uthread_yield();
+  } 
   return 0;
 }
 
@@ -121,6 +156,18 @@ void uthread_nopreempt_off(void) {
 
 /* ----------- private code -- */
 
+//Checks to see if all the priority queues are empty. If not, it returns the
+//highest non-empty runq according to priority otherwise it returns 0.
+int
+runq_nonempty()
+{
+  for(int i = UTH_MAXPRIO; i >= 0; i--){
+    if(!utqueue_empty(&runq_table[i])){
+      return i;
+    }
+  }
+  return 0;
+}
 
 /*
  * uthread_switch()
@@ -141,7 +188,17 @@ void uthread_nopreempt_off(void) {
 void
 uthread_switch()
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_switch");
+  uthread_nopreempt_on();
+  int runq_index;
+  do{
+    uthread_idle();
+  }while(!(runq_index = runq_nonempty()))
+  thread_t *thread_to_run = utqueue_dequeue(runq_table[runq_index]);
+  thread_to_run->ut_state = UT_ON_CPU;
+  thread_t *switched_thread = ut_curthr;
+  ut_curthr = thread_to_run;
+  uthread_nopreempt_reset();
+  uthread_swapcontext(&switched_thread->ut_ctx, &ut_curthr->ut_ctx);
 }
 
 
@@ -155,11 +212,13 @@ void uthread_start_timer(void);
 void
 uthread_sched_init(void)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_sched_init");
+  for(int i = 0; i < UTH_MAXPRIO + 1; i++){
+    utqueue_init(&runq_table[i]);
+  }
 }
 
 static void clock_interrupt(int);
-static sigset_t __attribute__((unused)) VTALRMmask;
+static sigset_t VTALRMmask;
 
 /*
  * uthread_start_timer
@@ -169,7 +228,18 @@ static sigset_t __attribute__((unused)) VTALRMmask;
  */
 void
 uthread_start_timer(void) {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_start_timer");
+  struct sigaction timesliceact; 
+  timesliceact.sa_handler = clock_interrupt; 
+  timesliceact.sa_mask = VTALRMmask; 
+  timesliceact.sa_flags = SA_RESTART; // avoid EINTR 
+  struct timeval interval = {0, 1}; // every .001 milliseconds 
+  struct itimerval timerval; 
+  timerval.it_value = interval; 
+  timerval.it_interval = interval; 
+  sigaction(SIGVTALRM, &timesliceact, 0); 
+  setitimer(ITIMER_VIRTUAL, &timerval, 0); 
+  sigemptyset(&VTALRMmask); 
+  sigaddset(&VTALRMmask, SIGVTALRM); 
 }
 
 /*
@@ -182,7 +252,12 @@ uthread_start_timer(void) {
  */
 static void
 clock_interrupt(int sig) {
-  NOT_YET_IMPLEMENTED("UTHREADS: clock_interrupt");
+  clock_count++;
+  if(uthread_no_preempt)
+    return;
+  taken_clock_count++;
+  sigprocmask(SIG_UNBLOCK, &VTALRMmask, 0);
+  uthread_yield();
 }
 
 /*
@@ -191,5 +266,6 @@ clock_interrupt(int sig) {
  * Allow preemption, regardless of the nesting level.
  */
 void uthread_nopreempt_reset(void) {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_nopreempt_reset");
+  uthread_no_preempt_on = 0;
+  uthread_no_preempt_count = 0;
 }

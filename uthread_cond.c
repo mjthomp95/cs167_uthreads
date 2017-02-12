@@ -28,7 +28,7 @@
 void
 uthread_cond_init(uthread_cond_t *cond)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_cond_init");
+  utqueue_init(&cond->uc_waiters);
 }
 
 
@@ -43,7 +43,11 @@ uthread_cond_init(uthread_cond_t *cond)
 void
 uthread_cond_wait(uthread_cond_t *cond, uthread_mtx_t *mtx)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_cond_wait");
+  uthread_nopreempt_on();
+  uthread_mtx_unlock(mtx);
+  utqueue_enqueue(&cond->uc_waiters, ut_curthr);
+  thread_block();
+  uthread_mtx_lock(mtx);
 }
 
 
@@ -57,7 +61,21 @@ uthread_cond_wait(uthread_cond_t *cond, uthread_mtx_t *mtx)
 void
 uthread_cond_broadcast(uthread_cond_t *cond)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_cond_broadcast");
+  uthread_nopreempt_on();
+  if(utqueue_empty(&cond->uc_waiters)){
+  	return;
+  }
+
+
+  while(!utqueue_empty(&cond->uc_waiters)){
+  	uthread_t *thread_to_wake = utqueue_dequeue(&cond->uc_waiters);
+  	uthread_wake(thread_to_wake);
+  }
+
+  if(uthread_no_preempt_count != 0){
+  		uthread_nopreempt_off();
+  }
+
 }
 
 
@@ -72,5 +90,15 @@ uthread_cond_broadcast(uthread_cond_t *cond)
 void
 uthread_cond_signal(uthread_cond_t *cond)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_cond_signal");
+  uthread_nopreempt_on();
+  if(utqueue_empty(&cond->uc_waiters)){
+  	return;
+  }
+
+  uthread_t *thread_to_wake = utqueue_dequeue(&cond->uc_waiters);
+  uthread_wake(thread_to_wake);
+  
+  if(uthread_no_preempt_count != 0){
+  		uthread_nopreempt_off();
+  }
 }

@@ -28,7 +28,8 @@
 void
 uthread_mtx_init(uthread_mtx_t *mtx)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_mtx_init");
+  mtx->m_owner = NULL;
+  utqueue_init(&mtx->m_waiters);
 }
 
 
@@ -42,8 +43,15 @@ uthread_mtx_init(uthread_mtx_t *mtx)
  */
 void
 uthread_mtx_lock(uthread_mtx_t *mtx)
-{
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_mtx_lock");
+{	
+  uthread_nopreempt_on();	
+  if(mtx->m_owner != NULL){
+  	utqueue_enqueue(&mtx->m_waiters, ut_curthr);
+  	uthread_block();
+  	return;
+  }
+  mtx->m_owner = ut_curthr;
+  uthread_nopreempt_off();
 }
 
 
@@ -56,8 +64,14 @@ uthread_mtx_lock(uthread_mtx_t *mtx)
 int
 uthread_mtx_trylock(uthread_mtx_t *mtx)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_mtx_trylock");
-  return 0;
+  uthread_nopreempt_on();
+  if(mtx->m_owner != NULL){
+  	uthread_nopreempt_off();
+  	return 0;
+  }
+  mtx->m_owner = ut_curthr;
+  uthread_nopreempt_off();
+  return 1;
 }
 
 
@@ -71,5 +85,13 @@ uthread_mtx_trylock(uthread_mtx_t *mtx)
 void
 uthread_mtx_unlock(uthread_mtx_t *mtx)
 {
-  NOT_YET_IMPLEMENTED("UTHREADS: uthread_mtx_unlock");
+  uthread_nopreempt_on();
+  if(!utqueue_empty(mtx->m_waiters)){
+  	uthread_t *thread_to_giveM = utqueue_dequeue(&mtx->m_waiters);
+  	mtx->m_owner = thread_to_giveM;
+  } else {
+  	mtx->m_owner = NULL;
+  }
+  
+  uthread_nopreempt_off();
 }
