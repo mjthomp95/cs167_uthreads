@@ -180,15 +180,19 @@ uthread_join(uthread_id_t uid, int *return_value)
   if(uid == uthread_self() || ut_curthr->ut_waiter->ut_id == uid){
 
     result = EDEADLK;
+    ut_curthr->ut_errno = EDEADLK;
   } else if(threadToWaitFor.ut_state == UT_ZOMBIE || threadToWaitFor.ut_detached){
 
     result = EINVAL;
+    ut_curthr->ut_errno = EINVAL;
   } else if(threadToWaitFor.ut_waiter != NULL){
 
     result = EINVAL;
+    ut_curthr->ut_errno = EINVAL;
   } else if(threadToWaitFor.ut_state == UT_NO_STATE || threadToWaitFor == UT_TRANSITION){
 
     result = ESRCH;
+    ut_curthr->ut_errno = ESRCH;
   } else {
     // !!!See whether I need to add a preempt_off here before uthread_block
     threadToWaitFor.ut_waiter = ut_curthr;
@@ -229,10 +233,12 @@ uthread_detach(uthread_id_t uid)
   if(thread_to_detach.ut_state == UT_NO_STATE || thread_to_detach.ut_state == UT_TRANSITION){
     //no thread with uid
     result = ESRCH;
+    ut_curthr->ut_errno = ESRCH;
   }
   if(thread_to_detach.ut_state == UT_ZOMBIE || thread_to_detach.ut_detached || thread_to_detach.ut_waiter != NULL){
     //non-joinable thread
     result = EINVAL;
+    ut_curthr->ut_errno = EINVAL;
   }
   if(result == 0){
     thread_to_detach.ut_detached = 1;
